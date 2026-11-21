@@ -1,0 +1,8 @@
+components:
+  dataset: business
+  embedding: multilingual_e5
+  architecture: snn_prototype
+experiment:
+  name: e5_business_generated
+  seed: 42
+  output_dir: results

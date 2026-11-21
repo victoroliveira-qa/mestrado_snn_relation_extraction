@@ -1,0 +1,13 @@
+embedding:
+  provider: model
+  model: multilingual-e5-large
+  text_columns:
+  - sentence_text
+  - mention_text
+  separator: '
+
+    '
+  text_prefix: 'passage: '
+  batch_size: 4
+  normalize_input: false
+  trust_remote_code: false

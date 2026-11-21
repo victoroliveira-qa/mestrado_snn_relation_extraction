@@ -1,0 +1,8 @@
+components:
+  dataset: business
+  embedding: multilingual_e5
+  architecture: prototype
+experiment:
+  name: exp003_business_e5_prototype
+  seed: 42
+  output_dir: results

@@ -1,0 +1,5 @@
+embedding:
+  provider: npy
+  path: datasets/embeddings/core_qwen.npy
+  normalize_input: false
+  positional_alignment_verified: true

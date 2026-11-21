@@ -1,0 +1,5 @@
+embedding:
+  provider: faiss
+  path: datasets/embeddings/qwen_all_in_one_semantics_index.faiss
+  normalize_input: false
+  positional_alignment_verified: true

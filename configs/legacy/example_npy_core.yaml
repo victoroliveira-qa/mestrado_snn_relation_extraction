@@ -1,0 +1,40 @@
+experiment:
+  name: example_npy_core
+  seed: 42
+  output_dir: experiments
+
+dataset:
+  path: datasets/raw/core.csv
+  label_column: relation_label
+  id_column: null
+  expected_rows: null
+embedding:
+  provider: npy
+  path: datasets/embeddings/core_qwen.npy
+  normalize_input: false
+  positional_alignment_verified: true
+split:
+  train: 0.80
+  validation: 0.10
+  test: 0.10
+  stratify: auto
+model:
+  projection_dims: [1024, 256]
+  head_dims: [256, 128]
+  dropout: 0.30
+  l2_regularization: 0.0001
+  fusion: v3_ordered
+training:
+  epochs: 100
+  batch_size: 64
+  learning_rate: 0.001
+  steps_per_epoch: 200
+  validation_steps: 50
+  positive_fraction: 0.5
+  early_stopping_patience: 10
+  reduce_lr_patience: 4
+visualization:
+  enabled: true
+  tsne: true
+  pacmap: true
+  sample_size: 1000

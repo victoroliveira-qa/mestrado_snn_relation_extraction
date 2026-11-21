@@ -1,0 +1,4 @@
+architecture:
+  name: mlp
+report:
+  primary_metric: macro_f1

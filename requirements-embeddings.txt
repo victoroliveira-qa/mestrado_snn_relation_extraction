@@ -1,0 +1,5 @@
+# Install after requirements.txt when generating embeddings on demand.
+sentence-transformers>=3.4
+transformers>=4.51
+accelerate>=1.0
+# GPU-aware PyTorch installation may be required for large Qwen models.

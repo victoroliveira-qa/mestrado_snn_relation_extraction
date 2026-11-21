@@ -1,0 +1,8 @@
+components:
+  dataset: business
+  embedding: qwen4b
+  architecture: snn_prototype
+experiment:
+  name: qwen4b_business_generated
+  seed: 42
+  output_dir: results

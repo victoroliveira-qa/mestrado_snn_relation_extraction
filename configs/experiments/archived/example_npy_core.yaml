@@ -1,0 +1,8 @@
+components:
+  dataset: core
+  embedding: core_qwen_npy
+  architecture: snn_prototype
+experiment:
+  name: example_npy_core
+  seed: 42
+  output_dir: results

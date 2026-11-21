@@ -1,0 +1,8 @@
+components:
+  dataset: business
+  embedding: qwen8b_faiss
+  architecture: mlp
+experiment:
+  name: business_mlp
+  seed: 42
+  output_dir: results

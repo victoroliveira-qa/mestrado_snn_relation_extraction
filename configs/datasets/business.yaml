@@ -1,0 +1,5 @@
+dataset:
+  path: datasets/raw/DATASET_TREINO_BASE_merged.xlsx
+  label_column: relation_label
+  id_column: null
+  expected_rows: null

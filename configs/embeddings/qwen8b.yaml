@@ -1,0 +1,13 @@
+embedding:
+  provider: model
+  model: qwen3-embedding-8b
+  text_columns:
+  - sentence_text
+  - mention_text
+  separator: '
+
+    '
+  text_prefix: ''
+  batch_size: 4
+  normalize_input: false
+  trust_remote_code: false

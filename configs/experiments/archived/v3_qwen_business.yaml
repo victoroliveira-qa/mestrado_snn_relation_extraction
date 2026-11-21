@@ -1,0 +1,8 @@
+components:
+  dataset: business
+  embedding: qwen8b_faiss
+  architecture: snn_prototype
+experiment:
+  name: v3_qwen_business
+  seed: 42
+  output_dir: results

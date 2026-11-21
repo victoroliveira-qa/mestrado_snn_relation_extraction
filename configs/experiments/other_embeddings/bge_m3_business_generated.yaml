@@ -1,0 +1,8 @@
+components:
+  dataset: business
+  embedding: bge_m3
+  architecture: snn_prototype
+experiment:
+  name: bge_m3_business_generated
+  seed: 42
+  output_dir: results

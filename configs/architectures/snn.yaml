@@ -1,0 +1,4 @@
+architecture:
+  name: snn
+report:
+  primary_metric: pair_f1

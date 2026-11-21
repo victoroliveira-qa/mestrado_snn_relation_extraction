@@ -1,0 +1,49 @@
+experiment:
+  name: qwen4b_business_generated
+  seed: 42
+  output_dir: experiments
+
+dataset:
+  path: datasets/raw/DATASET_TREINO_BASE_merged.xlsx
+  label_column: relation_label
+  expected_rows: null
+
+embedding:
+  provider: model
+  model: qwen3-embedding-4b
+  # REQUIRED: Replace with the actual fields used by your original embedding pipeline.
+  text_columns: [sentence_text, mention_text]
+  separator: "\n"
+  text_prefix: ""
+  batch_size: 4
+  normalize_input: false
+  trust_remote_code: false
+
+split:
+  train: 0.80
+  validation: 0.10
+  test: 0.10
+  stratify: auto
+
+model:
+  projection_dims: [1024, 256]
+  head_dims: [256, 128]
+  dropout: 0.30
+  l2_regularization: 0.0001
+  fusion: v3_ordered
+
+training:
+  epochs: 100
+  batch_size: 64
+  learning_rate: 0.001
+  steps_per_epoch: 200
+  validation_steps: 50
+  positive_fraction: 0.5
+  early_stopping_patience: 10
+  reduce_lr_patience: 4
+
+visualization:
+  enabled: true
+  tsne: true
+  pacmap: true
+  sample_size: 1000

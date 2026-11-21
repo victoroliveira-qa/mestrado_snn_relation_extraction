@@ -1,0 +1,9 @@
+architecture:
+  name: prototype
+report:
+  primary_metric: macro_f1
+prototypical:
+  n_way: 3
+  k_shot: 2
+  queries: 2
+  temperature: 10.0
