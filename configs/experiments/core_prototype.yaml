@@ -1,0 +1,12 @@
+components:
+  dataset: core
+  embedding: qwen4b
+  architecture: prototype
+experiment:
+  name: core_prototype
+  seed: 42
+  output_dir: results
+split:
+  strategy: official
+  validation_fraction: 0.1
+  stratify: strict

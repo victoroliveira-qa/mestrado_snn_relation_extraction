@@ -1,0 +1,13 @@
+components:
+  dataset: core
+  embedding: qwen4b
+  #embedding: bge-m3
+  architecture: mlp
+experiment:
+  name: core_mlp
+  seed: 42
+  output_dir: results
+split:
+  strategy: official
+  validation_fraction: 0.1
+  stratify: strict

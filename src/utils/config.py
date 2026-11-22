@@ -30,7 +30,7 @@ def _merge(base, update):
     return out
 
 
-def load_config(path):
+def load_config(path, component_overrides=None):
     """Load both legacy all-in-one YAML and component-based experiments.
 
     For component-based experiments the resolution order is:
@@ -41,12 +41,23 @@ def load_config(path):
     path = Path(path).expanduser().resolve()
     experiment = _yaml_mapping(path)
     components = experiment.get("components")
+    component_overrides = component_overrides or {}
+    if not isinstance(component_overrides, dict):
+        raise ValueError("component_overrides must be a mapping")
+    if set(component_overrides) - set(_COMPONENTS):
+        raise ValueError("Unknown component override; expected dataset, embedding or architecture")
+    for category, name in component_overrides.items():
+        if not isinstance(name, str) or not _SAFE_NAME.fullmatch(name):
+            raise ValueError(f"Invalid {category} override: {name!r}")
     if components is None:
+        if component_overrides:
+            raise ValueError("CLI component selection requires a modular 'components:' experiment YAML; legacy complete YAMLs are immutable")
         # Backward compatibility for previously stored stand-alone YAML files.
         # An incomplete or unexpanded modular config must fail before training.
         return _validate_resolved(experiment, path)
     if not isinstance(components, dict):
         raise ValueError("components must be a mapping")
+    components = {**components, **component_overrides}
     if set(components) != set(_COMPONENTS):
         raise ValueError(f"components must define exactly: {', '.join(_COMPONENTS)}")
     # Permit organization in configs/experiments/ and nested subdirectories.
@@ -77,7 +88,37 @@ def load_config(path):
             raise ValueError(f"Component preset {source} must define '{category}'")
         resolved = _merge(resolved, preset)
     overrides = {key: value for key, value in experiment.items() if key != 'components'}
-    return _validate_resolved(_merge(resolved, overrides), path)
+    # When components are replaced via CLI, inherited component-specific inline
+    # overrides could leak settings from the originally selected dataset/embedding.
+    if component_overrides:
+        for category in component_overrides:
+            overrides.pop(category, None)
+        if 'dataset' in component_overrides:
+            overrides.pop('split', None)
+    resolved = _merge(resolved, overrides)
+    resolved['selected_components'] = deepcopy(components)
+    protocol = resolved['dataset'].get('split_protocol')
+    if protocol and ('dataset' in component_overrides or 'split' not in overrides):
+        resolved['split'] = _merge(resolved.get('split', {}), protocol)
+    # A stored FAISS index represents a specific dataset, not a generic model.
+    scope = resolved['embedding'].get('dataset_scope')
+    if scope and scope != components['dataset']:
+        raise ValueError(f"FAISS embedding preset {components['embedding']!r} is linked to dataset {scope!r}, not {components['dataset']!r}. Select a model-generated embedding.")
+    # Dataset owns the text representation; embedding presets own the model.
+    # Do not alter existing FAISS/NPY providers or their alignment safeguards.
+    if resolved['embedding'].get('provider', '').lower() in ('model', 'sentence_transformers'):
+        input_cfg = resolved['dataset'].get('embedding_input')
+        if not input_cfg or not isinstance(input_cfg.get('columns'), list):
+            raise ValueError(f"Dataset {components['dataset']!r} needs dataset.embedding_input.columns for model-generated embeddings")
+        resolved['embedding']['text_columns'] = deepcopy(input_cfg['columns'])
+        resolved['embedding']['separator'] = input_cfg.get('separator', '\n')
+        resolved['embedding']['cache_namespace'] = components['dataset']
+    if component_overrides:
+        # Correct experiment identification for changed combinations.
+        selected = resolved['selected_components']
+        resolved.setdefault('experiment', {})['name'] = '_'.join(
+            (selected['dataset'], selected['embedding'], selected['architecture']))
+    return _validate_resolved(resolved, path)
 
 
 def _validate_resolved(config, source):

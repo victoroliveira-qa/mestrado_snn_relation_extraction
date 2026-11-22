@@ -27,7 +27,7 @@ def build_texts(df, config):
     return [prefix + text for text in texts]
 
 
-def generate_vectors(config, df, root):
+def generate_vectors(config, df, root, audit=None):
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:
@@ -50,7 +50,12 @@ def generate_vectors(config, df, root):
         "texts_sha256": hashlib.sha256(json.dumps(texts, ensure_ascii=False).encode("utf-8")).hexdigest(),
     }
     fingerprint = hashlib.sha256(json.dumps(config_identity, sort_keys=True).encode()).hexdigest()
-    cache_dir = Path(root) / 'datasets' / 'embeddings' / 'generated'
+    namespace = config.get('cache_namespace', 'generic')
+    model_slug = str(model_key).replace('/', '_')
+    import re
+    if not re.fullmatch(r'[A-Za-z0-9_-]+', str(namespace)) or not re.fullmatch(r'[A-Za-z0-9_-]+', model_slug):
+        raise ValueError('Unsafe embedding cache namespace or model name')
+    cache_dir = Path(root) / 'datasets' / 'embeddings' / str(namespace) / model_slug
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache = cache_dir / (fingerprint + '.npy')
     manifest = cache_dir / (fingerprint + '.json')
@@ -60,6 +65,10 @@ def generate_vectors(config, df, root):
             arr = np.load(cache, allow_pickle=False)
             if arr.ndim == 2 and len(arr) == len(df) and np.isfinite(arr).all():
                 print(f"Reusing verified embedding cache: {cache}")
+                if audit is not None:
+                    audit.update({"cache_hit": True, "source_file": str(cache),
+                                  "generation_device": saved.get("generation_device", "unknown (cache generated before device tracking)"),
+                                  "model_name": model_name})
                 return np.asarray(arr, dtype=np.float32)
         raise ValueError("Embedding cache has inconsistent metadata or shape")
     print(f"Generating embeddings with {model_name}; this may require substantial GPU memory")
@@ -69,6 +78,17 @@ def generate_vectors(config, df, root):
     if config.get("truncate_dim"):
         args["truncate_dim"] = int(config["truncate_dim"])
     model = SentenceTransformer(model_name, **args)
+    generation_device = str(model.device)
+    if str(generation_device).startswith("cuda"):
+        try:
+            import torch
+            gpu_index = torch.device(generation_device).index or 0
+            generation_device = f"{generation_device} ({torch.cuda.get_device_name(gpu_index)})"
+        except (ImportError, RuntimeError, ValueError):
+            pass
+    if audit is not None:
+        audit.update({"cache_hit": False, "generation_device": generation_device, "model_name": model_name,
+                      "source_file": str(cache)})
     kwargs = {"batch_size": int(config.get("batch_size", 8)), "show_progress_bar": True, "convert_to_numpy": True,
               "normalize_embeddings": bool(config.get("normalize_input", False))}
     if config.get("prompt_name"):
@@ -80,6 +100,7 @@ def generate_vectors(config, df, root):
         raise ValueError("Invalid generated embeddings")
     np.save(cache, array)
     manifest.write_text(json.dumps({"fingerprint": fingerprint, "identity": config_identity,
-                                    "shape": list(array.shape)}, indent=2, ensure_ascii=False), encoding="utf-8")
+                                    "shape": list(array.shape), "generation_device": generation_device},
+                                   indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"Cached embeddings: {cache}")
     return array

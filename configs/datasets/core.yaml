@@ -1,5 +1,17 @@
 dataset:
-  path: datasets/raw/core.csv
+  path: datasets/raw/core/core_official.csv
   label_column: relation_label
-  id_column: null
-  expected_rows: null
+  id_column: source_id
+  adapter: core
+  expected_rows: 4708
+  embedding_input:
+    columns:
+    - embedding_text
+    separator: '
+
+      '
+  split_protocol:
+    strategy: official
+    validation_fraction: 0.1
+    stratify: strict
+

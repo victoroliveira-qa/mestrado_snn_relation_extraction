@@ -16,7 +16,7 @@ def create_run(base, experiment_name, now=None):
     return path, output_dirs(path)
 
 
-def write_txt_report(dirs, config, metrics_by_split, run_path, status='CONCLUIDO', extra=None):
+def write_txt_report(dirs, config, metrics_by_split, run_path, status='CONCLUIDO', extra=None, audit=None):
     """Highlight a predeclared selection metric within each task, never maximum of unlike metrics."""
     architecture = config.get('architecture', {}).get('name', 'snn_prototype')
     task = 'pair' if architecture in ('snn', 'snn_mlp') else 'multiclass'
@@ -38,6 +38,10 @@ def write_txt_report(dirs, config, metrics_by_split, run_path, status='CONCLUIDO
         if metric in metrics:
             parts.append(f'DESTAQUE {split.upper()}: {metric} = {metrics[metric]:.6f}')
         parts.append('')
+    if audit:
+        from src.evaluation.audit import report_audit_lines, report_class_lines
+        parts.extend(report_audit_lines(audit))
+        parts.extend(report_class_lines(metrics_by_split))
     if extra:
         parts.extend(['OBSERVACOES', '-'*55] + [str(x) for x in extra])
     parts.extend(['', 'ARQUIVOS', '-'*55] + [f'{key}/' for key in dirs])

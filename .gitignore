@@ -5,6 +5,6 @@
 results
 
 #DataSets
-datasets\embeddings\qwen_all_in_one_semantics_index.faiss
-datasets\raw\DATASET_TESTE_BASE_merged.csv
-datasets\raw\DATASET_TREINO_BASE_merged.xlsx
+*.json
+*.npy
+*.csv

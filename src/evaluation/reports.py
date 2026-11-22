@@ -17,10 +17,18 @@ def save_training_curves(history, output, logs_dir=None):
     import matplotlib.pyplot as plt
     df=pd.DataFrame(history.history);df.to_csv((logs_dir or output)/"training_history.csv",index=False)
     for metric in ("loss","accuracy","auc"):
-        plt.figure(figsize=(7,4))
-        if metric in df:plt.plot(df[metric],label="train")
-        if f"val_{metric}" in df:plt.plot(df[f"val_{metric}"],label="validation")
-        plt.xlabel("Epoch");plt.ylabel(metric);plt.title(f"Training {metric}");plt.legend();plt.tight_layout();plt.savefig(output/f"{metric}.png",dpi=160);plt.close()
+        if metric not in df.columns and f"val_{metric}" not in df.columns:
+            continue  # Avoid blank plots and Matplotlib legend warnings.
+        fig, ax = plt.subplots(figsize=(7, 4))
+        if metric in df.columns:
+            ax.plot(np.arange(1, len(df) + 1), df[metric], label="train")
+        if f"val_{metric}" in df.columns:
+            ax.plot(np.arange(1, len(df) + 1), df[f"val_{metric}"], label="validation")
+        ax.set(xlabel="Epoch", ylabel=metric, title=f"Training {metric}")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(output / f"{metric}.png", dpi=160)
+        plt.close(fig)
 
 
 def save_confusion(ytrue,ypred,names,output):

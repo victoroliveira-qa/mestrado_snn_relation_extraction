@@ -1,0 +1,12 @@
+components:
+  dataset: core
+  embedding: qwen4b
+  architecture: snn_prototype
+experiment:
+  name: core_snn_prototype
+  seed: 42
+  output_dir: results
+split:
+  strategy: official
+  validation_fraction: 0.1
+  stratify: strict

@@ -1,5 +1,6 @@
 """SNN Research 3.1: configurable architectures + immutable experiment runs."""
 import argparse
+import hashlib
 import json
 import traceback
 from datetime import datetime, timezone
@@ -18,13 +19,14 @@ from src.utils.output import output_dirs
 from src.utils.runs import create_run, write_txt_report
 from src.data.loader import load_table
 from src.embeddings.providers import load_vectors
-from src.data.splitting import split_ids
+from src.data.splitting import split_ids, split_official_ids
 from src.data.pairing import PairSequence
 from src.models.siamese import build_model, L2Normalize, AbsoluteDifference
 from src.models.architectures import architecture_name, shared_encoder, build_mlp, build_snn_cosine
 from src.training.episodic import train_prototypical
 from src.evaluation.prototypes import compute_prototypes, classify
 from src.evaluation.reports import save_metrics, save_training_curves, save_confusion
+from src.evaluation.audit import build_run_audit
 from src.evaluation.visualization import save_reductions
 from src.inference.predictor import predict_embedding
 
@@ -53,8 +55,10 @@ def multiclass_metrics(y, pred, labels, dirs, split):
     return save_metrics(y, pred, labels, dirs['metrics'], split)
 
 
-def save_results(df, row_ids, y, pred, scores, class_names, dirs):
+def save_results(df, row_ids, y, pred, scores, class_names, dirs, id_column=None):
     data = {'original_row_id':row_ids, 'true_label':class_names[y], 'predicted_label':class_names[pred]}
+    if id_column and id_column in df.columns:
+        data[id_column] = df.loc[row_ids, id_column].to_numpy()
     results = pd.DataFrame(data)
     for idx, name in enumerate(class_names):
         results[f'score_{name}'] = scores[:,idx]
@@ -68,21 +72,22 @@ def check_class_coverage(y_train, y_val, y_test):
                          'Choose a split with training coverage; do not evaluate missing-class prototypes.')
 
 
-def train(config_path):
-    cfg = load_config(config_path)  # Expands components and checks required sections first.
+def train(config_path, component_overrides=None):
+    cfg = load_config(config_path, component_overrides=component_overrides)  # Expands components and checks required sections first.
     name = architecture_name(cfg)
     seed = int(cfg['experiment']['seed']); set_seed(seed)
-    out_base = resolve_path(cfg['experiment'].get('output_dir','experiments'), ROOT)
+    out_base = resolve_path(cfg['experiment'].get('output_dir','results'), ROOT)
     run, dirs = create_run(out_base, cfg['experiment']['name'])
     (dirs['configs']/'config.yaml').write_text(yaml.safe_dump(cfg, sort_keys=False,allow_unicode=True),encoding='utf-8')
     (dirs['configs']/'source_config_path.txt').write_text(str(Path(config_path).resolve()),encoding='utf-8')
     metrics = {}
     try:
         dcfg = cfg['dataset']
-        df = load_table(resolve_path(dcfg['path'], ROOT), dcfg['label_column'])
+        df = load_table(resolve_path(dcfg['path'], ROOT), dcfg['label_column'], dcfg.get('adapter'), dcfg.get('column_map'))
         if dcfg.get('expected_rows') and len(df) != int(dcfg['expected_rows']):
             raise ValueError('Dataset row count differs from expected_rows')
-        all_vec = load_vectors(cfg['embedding'],df,ROOT)
+        embedding_audit = {}
+        all_vec = load_vectors(cfg['embedding'],df,ROOT,audit=embedding_audit)
         valid = df[dcfg['label_column']].notna().to_numpy()
         X = np.asarray(all_vec[valid], dtype=np.float32)
         original_ids = df.loc[valid, '_original_row_id'].to_numpy()
@@ -90,7 +95,12 @@ def train(config_path):
         y = labels.fit_transform(df.loc[valid,dcfg['label_column']].astype(str).to_numpy())
         if len(X) < 10 or len(labels.classes_) < 2:
             raise ValueError('Training requires at least 10 labeled rows and two classes')
-        split = split_ids(y,cfg['split'],seed)
+        if cfg['split'].get('strategy') == 'official':
+            if '_source_split' not in df.columns:
+                raise ValueError('Official split requires an _source_split column in the dataset')
+            split = split_official_ids(y, df.loc[valid, '_source_split'].to_numpy(), cfg['split'], seed)
+        else:
+            split = split_ids(y,cfg['split'],seed)
         tr,va,te = (split[k] for k in ('train','validation','test'))
         check_class_coverage(y[tr],y[va],y[te])
         np.savez_compressed(dirs['splits']/'split_indices.npz', **{k:original_ids[v] for k,v in split.items()})
@@ -132,13 +142,13 @@ def train(config_path):
                 va_pred,pred,scores,visual=prototype_predictions(encoder,X,y,tr,va,te,dirs,len(labels.classes_))
                 metrics['validation_multiclass']=multiclass_metrics(y[va],va_pred,labels.classes_,dirs,'validation_multiclass')
                 metrics['test_multiclass']=multiclass_metrics(y[te],pred,labels.classes_,dirs,'test_multiclass')
-                save_results(df,original_ids[te],y[te],pred,scores,labels.classes_,dirs)
+                save_results(df,original_ids[te],y[te],pred,scores,labels.classes_,dirs,dcfg.get('id_column'))
                 save_confusion(y[te],pred,labels.classes_,dirs['figures'])
                 save_reductions(visual,y[te],labels.classes_,cfg.get('visualization',{}),seed,dirs['figures'])
         if name in ('mlp','mlp_prototype','prototype'):
             metrics['validation']=multiclass_metrics(y[va],va_pred,labels.classes_,dirs,'validation')
             metrics['test']=multiclass_metrics(y[te],pred,labels.classes_,dirs,'test')
-            save_results(df,original_ids[te],y[te],pred,scores,labels.classes_,dirs)
+            save_results(df,original_ids[te],y[te],pred,scores,labels.classes_,dirs,dcfg.get('id_column'))
             save_confusion(y[te],pred,labels.classes_,dirs['figures'])
             save_reductions(visual,y[te],labels.classes_,cfg.get('visualization',{}),seed,dirs['figures'])
         save_training_curves(history,dirs['figures'],dirs['logs'])
@@ -146,9 +156,15 @@ def train(config_path):
                     'dataset':str(dcfg['path']), 'embedding':cfg['embedding'],
                     'labeled_rows':int(len(X)), 'embedding_dim':int(X.shape[1]),
                     'split_sizes':{k:len(v) for k,v in split.items()},
+                    'split_strategy':cfg['split'].get('strategy','random'),
+                    'dataset_adapter':dcfg.get('adapter','tabular'),
+                    'dataset_sha256':hashlib.sha256(resolve_path(dcfg['path'], ROOT).read_bytes()).hexdigest(),
                     'notes':'Pair binary scores and multiclass prototype results are distinct tasks. Prototype scores are cosine similarities, not probabilities.'}
         (dirs['logs']/'metadata.json').write_text(json.dumps(metadata,indent=2,ensure_ascii=False),encoding='utf-8')
-        report=write_txt_report(dirs,cfg,metrics,run)
+        audit = build_run_audit(history, y, split, labels.classes_, embedding_audit)
+        (dirs['logs']/'experimental_audit.json').write_text(
+            json.dumps(audit, indent=2, ensure_ascii=False), encoding='utf-8')
+        report=write_txt_report(dirs,cfg,metrics,run,audit=audit)
         print(f'RUN={run}\nRELATORIO={report}')
         return run
     except Exception as exc:
@@ -180,7 +196,8 @@ def infer(config_path, experiment_dir, row_id, other_row_id=None):
     cfg=load_config(saved)
     name=architecture_name(cfg)
     dirs=output_dirs(exp,create=False)
-    df=load_table(resolve_path(cfg['dataset']['path'], ROOT),cfg['dataset']['label_column'])
+    dcfg = cfg['dataset']
+    df=load_table(resolve_path(dcfg['path'], ROOT),dcfg['label_column'],dcfg.get('adapter'),dcfg.get('column_map'))
     if not (0<=row_id<len(df)):
         raise IndexError('row-id outside dataset')
     X=load_vectors(cfg['embedding'],df,ROOT)
@@ -213,12 +230,19 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description='SNN Research: modular architectures, immutable experiment runs')
     parser.add_argument('command',choices=['train','infer'])
     parser.add_argument('--config',required=True)
+    parser.add_argument('--dataset', help='Override dataset preset (train only)')
+    parser.add_argument('--embedding', help='Override embedding preset (train only)')
+    parser.add_argument('--architecture', help='Override architecture preset (train only)')
     parser.add_argument('--experiment-dir')
     parser.add_argument('--row-id',type=int)
     parser.add_argument('--other-row-id',type=int)
     args=parser.parse_args()
-    if args.command=='train':train(args.config)
+    if args.command=='train':
+        chosen = {k: v for k, v in [('dataset', args.dataset), ('embedding', args.embedding), ('architecture', args.architecture)] if v is not None}
+        train(args.config, component_overrides=chosen)
     else:
+        if args.dataset or args.embedding or args.architecture:
+            parser.error('Inference uses the saved run configuration; component overrides are train-only')
         if args.experiment_dir is None or args.row_id is None:
             parser.error('infer requires --experiment-dir and --row-id')
         infer(args.config,args.experiment_dir,args.row_id,args.other_row_id)

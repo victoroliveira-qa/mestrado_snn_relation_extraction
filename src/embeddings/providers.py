@@ -2,13 +2,16 @@ from pathlib import Path
 import numpy as np
 
 
-def load_vectors(config, df, root):
+def load_vectors(config, df, root, audit=None):
     """Load already-computed embeddings without changing their row order."""
     from src.utils.config import resolve_path
     provider = config["provider"].lower()
+    if audit is not None:
+        audit.update({"provider": provider, "model": config.get("model"),
+                      "generation_device": "not_recorded", "cache_hit": None})
     if provider in ("model", "sentence_transformers"):
         from src.embeddings.model_registry import generate_vectors
-        return generate_vectors(config, df, root)
+        return generate_vectors(config, df, root, audit=audit)
     path = resolve_path(config["path"], root)
     if not path.is_file():
         raise FileNotFoundError(f"Embeddings not found: {path}")
@@ -30,6 +33,9 @@ def load_vectors(config, df, root):
             raise RuntimeError("FAISS index does not support required reconstruction; export exact vectors or use NPY provider") from exc
     else:
         raise ValueError(f"Unsupported embedding provider: {provider}. Supported: faiss, npy")
+    if audit is not None:
+        audit["generation_device"] = "unknown (precomputed; original generation environment not recorded)"
+        audit["source_file"] = str(path)
     if not np.isfinite(vectors).all():
         raise ValueError("Non-finite embedding values detected")
     if config.get("normalize_input", False):
