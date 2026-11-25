@@ -3,3 +3,19 @@ dataset:
   label_column: relation_label
   id_column: null
   expected_rows: null
+
+  embedding_input:
+    columns:
+      - tex_sentence
+      - tex_ent_mention
+      - tab_ent_mention
+      - table_header
+      - tab_row_context
+      - tab_cell_content
+    separator: "\n"
+
+  split_protocol:
+    train: 0.8
+    validation: 0.1
+    test: 0.1
+    stratify: auto

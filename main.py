@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import traceback
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +13,8 @@ import tensorflow as tf
 import yaml
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, classification_report, confusion_matrix
+
+from src.evaluation.global_registry import register_execution
 
 from src.utils.config import load_config, resolve_path
 from src.utils.seed import set_seed
@@ -81,6 +84,7 @@ def train(config_path, component_overrides=None):
     (dirs['configs']/'config.yaml').write_text(yaml.safe_dump(cfg, sort_keys=False,allow_unicode=True),encoding='utf-8')
     (dirs['configs']/'source_config_path.txt').write_text(str(Path(config_path).resolve()),encoding='utf-8')
     metrics = {}
+    stage = "training_and_evaluation"
     try:
         dcfg = cfg['dataset']
         df = load_table(resolve_path(dcfg['path'], ROOT), dcfg['label_column'], dcfg.get('adapter'), dcfg.get('column_map'))
@@ -164,12 +168,27 @@ def train(config_path, component_overrides=None):
         audit = build_run_audit(history, y, split, labels.classes_, embedding_audit)
         (dirs['logs']/'experimental_audit.json').write_text(
             json.dumps(audit, indent=2, ensure_ascii=False), encoding='utf-8')
+        stage = "report_generation"
         report=write_txt_report(dirs,cfg,metrics,run,audit=audit)
         print(f'RUN={run}\nRELATORIO={report}')
+        stage = "global_registry"
+        register_execution(
+            run_dir=run,
+            resolved_config=cfg,
+            output_dir=ROOT / "results" / "consolidated",
+        )
         return run
     except Exception as exc:
-        (dirs['logs']/'error.txt').write_text(traceback.format_exc(),encoding='utf-8')
-        write_txt_report(dirs,cfg,metrics,run,status='FALHOU',extra=[f'Erro: {type(exc).__name__}: {exc}'])
+        original_traceback = traceback.format_exc()
+        try:
+            (dirs['logs']/'error.txt').write_text(original_traceback, encoding='utf-8')
+        except Exception as log_exc:
+            print(f'Failed to write error log: {log_exc}', file=sys.stderr)
+        try:
+            write_txt_report(dirs, cfg, metrics, run, status='FALHOU',
+                             extra=[f'Etapa: {stage}', f'Erro: {type(exc).__name__}: {exc}'])
+        except Exception as report_exc:
+            print(f'Failed to write error report: {report_exc}', file=sys.stderr)
         raise
 
 

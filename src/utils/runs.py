@@ -46,7 +46,14 @@ def write_txt_report(dirs, config, metrics_by_split, run_path, status='CONCLUIDO
         parts.extend(['OBSERVACOES', '-'*55] + [str(x) for x in extra])
     parts.extend(['', 'ARQUIVOS', '-'*55] + [f'{key}/' for key in dirs])
     target = dirs['reports'] / filename
-    # Exclusive create explicitly avoids accidental overwrite.
-    with target.open('x', encoding='utf-8') as file:
+    # Keep exclusive creation; preserve the original report on late failures.
+    try:
+        file = target.open('x', encoding='utf-8')
+    except FileExistsError:
+        if status != 'FALHOU':
+            raise
+        target = target.with_name(f'{target.stem}_erro_{uuid4().hex}{target.suffix}')
+        file = target.open('x', encoding='utf-8')
+    with file:
         file.write('\n'.join(parts) + '\n')
     return target

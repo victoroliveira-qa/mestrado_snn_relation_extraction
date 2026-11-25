@@ -1,0 +1,120 @@
+Segue a lista de comandos para executar os **seis experimentos do dataset CORE**, utilizando as arquiteturas implementadas na Etapa 4 do SNN Research.
+
+Todos os comandos devem ser executados no terminal do PyCharm ou PowerShell, na raiz do projeto `mestrado_snn_relation_extraction`.
+
+## **1. CORE + Qwen3-Embedding-4B**
+
+| Arquitetura           | Comando                                                                     |
+| --------------------- | --------------------------------------------------------------------------- |
+| MLP simples           | `python main.py train --config configs/experiments/core_mlp.yaml`           |
+| MLP + Prototype       | `python main.py train --config configs/experiments/core_mlp_prototype.yaml` |
+| Prototypical Network  | `python main.py train --config configs/experiments/core_prototype.yaml`     |
+| Siamese Network (SNN) | `python main.py train --config configs/experiments/core_snn.yaml`           |
+| SNN + MLP             | `python main.py train --config configs/experiments/core_snn_mlp.yaml`       |
+| SNN + Prototype       | `python main.py train --config configs/experiments/core_snn_prototype.yaml` |
+
+Esses arquivos utilizam inicialmente o modelo Qwen3-Embedding-4B.
+
+## **2. CORE + outros embeddings**
+
+Você também pode executar as mesmas arquiteturas utilizando outros modelos de embeddings, sem modificar os arquivos YAML.
+
+| Embedding             | Parâmetro                     |
+| --------------------- | ----------------------------- |
+| Qwen3-Embedding-4B    | `--embedding qwen4b`          |
+| Qwen3-Embedding-8B    | `--embedding qwen8b`          |
+| BGE-M3                | `--embedding bge_m3`          |
+| Multilingual-E5-Large | `--embedding multilingual_e5` |
+
+Por exemplo, para executar **CORE + BGE-M3 + SNN + MLP**:
+
+```
+python main.py train --config configs/experiments/core_snn_mlp.yaml --embedding bge_m3
+```
+
+Para executar **CORE + Multilingual-E5 + Prototype**:
+
+```
+python main.py train --config configs/experiments/core_prototype.yaml --embedding multilingual_e5
+```
+
+Para executar **CORE + Qwen8B + SNN + Prototype**:
+
+```
+python main.py train --config configs/experiments/core_snn_prototype.yaml --embedding qwen8b
+```
+
+## **3. Executar automaticamente as seis arquiteturas**
+
+Como você está utilizando Windows, pode executar esta sequência no PowerShell:
+
+```
+$arquiteturas = @(
+    "mlp",
+    "mlp_prototype",
+    "prototype",
+    "snn",
+    "snn_mlp",
+    "snn_prototype"
+)
+
+foreach ($arquitetura in $arquiteturas) {
+    Write-Host "Executando CORE com arquitetura: $arquitetura"
+
+    python main.py train --config "configs/experiments/core_$arquitetura.yaml"
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Erro na arquitetura: $arquitetura"
+        break
+    }
+}
+```
+
+Esse procedimento executa os treinamentos sequencialmente, utilizando Qwen4B como embedding padrão. Se algum experimento falhar, a sequência será interrompida.
+
+## **4. Executar todas as combinações de arquiteturas e embeddings**
+
+Caso deseje avaliar as seis arquiteturas com os quatro modelos de embeddings, poderá utilizar:
+
+```
+$arquiteturas = @(
+    "mlp",
+    "mlp_prototype",
+    "prototype",
+    "snn",
+    "snn_mlp",
+    "snn_prototype"
+)
+
+$embeddings = @(
+    "qwen4b",
+    "qwen8b",
+    "bge_m3",
+    "multilingual_e5"
+)
+
+foreach ($embedding in $embeddings) {
+    foreach ($arquitetura in $arquiteturas) {
+
+        Write-Host "CORE | $embedding | $arquitetura"
+
+        python main.py train `
+            --config "configs/experiments/core_$arquitetura.yaml" `
+            --embedding $embedding
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Falha: $embedding / $arquitetura"
+        }
+    }
+}
+```
+
+TOTAL DE COMBINAÇÕES POSSÍVEIS
+
+# **24 experimentos**
+
+6 arquiteturas × 4 modelos de embeddings × 1 dataset CORE
+
+Os resultados de cada execução serão armazenados separadamente em `results/`, incluindo métricas, modelos, gráficos e relatórios TXT.
+
+**Recomendação:** execute primeiro os seis experimentos com Qwen4B. Após validar todos os treinamentos, avance para os outros embeddings, mantendo as mesmas configurações experimentais para facilitar a comparação na dissertação.
